@@ -1,0 +1,106 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract ComplexBlockchain {
+    struct Block {
+        uint256 index;
+        bytes32 previousHash;
+        bytes32 hash;
+        uint256 timestamp;
+        uint256 nonce;
+        uint256 difficulty;
+        uint256 numTransactions;
+        mapping(uint256 => Transaction) transactions;
+    }
+
+    struct Transaction {
+        address sender;
+        address recipient;
+        uint256 amount;
+        uint256 timestamp;
+    }
+
+    mapping(uint256 => Block) public blockchain;
+    uint256 public currentBlockIndex;
+    uint256 public difficulty;
+    uint256 public numZeroes = 2; // Number of leading zeroes required in block hash for proof of work
+
+    event BlockAdded(uint256 indexed index, bytes32 previousHash, bytes32 hash, uint256 timestamp, uint256 nonce, uint256 numTransactions);
+    event TransactionAdded(uint256 indexed blockIndex, address indexed sender, address indexed recipient, uint256 amount, uint256 timestamp);
+
+    constructor() {
+        difficulty = 2**256 / (2**numZeroes);
+        addGenesisBlock();
+    }
+
+    function addGenesisBlock() internal {
+        Block memory genesis = Block({
+            index: 0,
+            previousHash: 0x0,
+            hash: 0x0,
+            timestamp: block.timestamp,
+            nonce: 0,
+            difficulty: difficulty,
+            numTransactions: 0
+        });
+        blockchain[0] = genesis;
+        currentBlockIndex = 1;
+    }
+
+    function addBlock() external {
+        bytes32 previousHash = blockchain[currentBlockIndex - 1].hash;
+        uint256 timestamp = block.timestamp;
+        uint256 nonce = 0;
+        uint256 numTransactions = blockchain[currentBlockIndex - 1].numTransactions;
+
+        bytes32 hash = calculateHash(currentBlockIndex, previousHash, timestamp, nonce, numTransactions);
+        while (uint256(hash) > difficulty) {
+            nonce++;
+            hash = calculateHash(currentBlockIndex, previousHash, timestamp, nonce, numTransactions);
+        }
+
+        Block memory newBlock = Block({
+            index: currentBlockIndex,
+            previousHash: previousHash,
+            hash: hash,
+            timestamp: timestamp,
+            nonce: nonce,
+            difficulty: difficulty,
+            numTransactions: numTransactions
+        });
+
+        blockchain[currentBlockIndex] = newBlock;
+        currentBlockIndex++;
+
+        emit BlockAdded(newBlock.index, newBlock.previousHash, newBlock.hash, newBlock.timestamp, newBlock.nonce, newBlock.numTransactions);
+    }
+
+    function addTransaction(address _sender, address _recipient, uint256 _amount) external {
+        require(_sender != address(0), "Invalid sender address");
+        require(_recipient != address(0), "Invalid recipient address");
+        require(_amount > 0, "Invalid amount");
+
+        Transaction memory newTransaction = Transaction({
+            sender: _sender,
+            recipient: _recipient,
+            amount: _amount,
+            timestamp: block.timestamp
+        });
+
+        uint256 blockIndex = currentBlockIndex - 1;
+        blockchain[blockIndex].transactions[blockchain[blockIndex].numTransactions] = newTransaction;
+        blockchain[blockIndex].numTransactions++;
+
+        emit TransactionAdded(blockIndex, _sender, _recipient, _amount, block.timestamp);
+    }
+
+    function calculateHash(
+        uint256 index,
+        bytes32 previousHash,
+        uint256 timestamp,
+        uint256 nonce,
+        uint256 numTransactions
+    ) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(index, previousHash, timestamp, nonce, numTransactions));
+    }
+}
